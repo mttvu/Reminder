@@ -1,5 +1,20 @@
 package com.example.reminder
 
+import android.os.Parcel
+import android.os.Parcelable
+import androidx.room.ColumnInfo
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+import kotlinx.android.parcel.Parcelize
+
+@Parcelize
+@Entity(tableName = "reminderTable")
 data class Reminder(
-    var reminder: String
-)
+
+    @ColumnInfo( name = "reminder")
+    var reminder: String,
+
+    @PrimaryKey(autoGenerate = true)
+    @ColumnInfo(name = "id")
+    var id: Long? = null
+) : Parcelable

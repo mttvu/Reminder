@@ -1,5 +1,7 @@
 package com.example.reminder
 
+import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import com.google.android.material.snackbar.Snackbar
 import androidx.appcompat.app.AppCompatActivity
@@ -12,23 +14,43 @@ import androidx.recyclerview.widget.RecyclerView
 
 import kotlinx.android.synthetic.main.activity_reminder.*
 import kotlinx.android.synthetic.main.content_reminder.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
+const val ADD_REMINDER_REQUEST_CODE = 100
 class ReminderActivity : AppCompatActivity() {
 
     private val reminders = arrayListOf<Reminder>()
     private val reminderAdapter = ReminderAdapter(reminders)
+    private lateinit var reminderRepository: ReminderRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_reminder)
         setSupportActionBar(toolbar)
-        fabAddReminder.setOnClickListener {
-            val reminder = etReminder.text.toString()
-            addReminder(reminder)}
-
+        reminderRepository = ReminderRepository(this)
         initViews()
 
     }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (resultCode == Activity.RESULT_OK) {
+            when (requestCode) {
+                ADD_REMINDER_REQUEST_CODE -> {
+                    val reminder = data!!.getParcelableExtra<Reminder>(EXTRA_REMINDER)
+                    CoroutineScope(Dispatchers.Main).launch {
+                        withContext(Dispatchers.IO) {
+                            reminderRepository.insertReminder(reminder)
+                        }
+                        getRemindersFromDatabase()
+                    }
+                }
+            }
+        }
+    }
+
 
     private fun initViews() {
 
@@ -37,21 +59,31 @@ class ReminderActivity : AppCompatActivity() {
         rvReminders.adapter = reminderAdapter
         rvReminders.addItemDecoration(DividerItemDecoration(this@ReminderActivity, DividerItemDecoration.VERTICAL))
         createItemTouchHelper().attachToRecyclerView(rvReminders)
+        fabAddReminder.setOnClickListener { startAddActivity()}
+        getRemindersFromDatabase()
 
     }
 
-    // addReminder method
-    private fun addReminder(reminder: String) {
-        if (reminder.isNotBlank()) {
-            reminders.add(Reminder(reminder))
+    private fun getRemindersFromDatabase() {
+        CoroutineScope(Dispatchers.Main).launch {
+            val reminders = withContext(Dispatchers.IO) {
+                reminderRepository.getAllReminders()
+            }
+            this@ReminderActivity.reminders.clear()
+            this@ReminderActivity.reminders.addAll(reminders)
             reminderAdapter.notifyDataSetChanged()
-            etReminder.text?.clear()
-        } else {
-            Snackbar.make(etReminder, "You must fill in the input field!", Snackbar.LENGTH_SHORT).show()
         }
     }
 
-    /**
+
+    private fun startAddActivity() {
+        val intent = Intent(this, AddActivity::class.java)
+        startActivityForResult(intent, ADD_REMINDER_REQUEST_CODE)
+    }
+
+
+
+/**
      * Create a touch helper to recognize when a user swipes an item from a recycler view.
      * An ItemTouchHelper enables touch behavior (like swipe and move) on each ViewHolder,
      * and uses callbacks to signal when a user is performing these actions.
@@ -74,8 +106,15 @@ class ReminderActivity : AppCompatActivity() {
             // Callback triggered when a user swiped an item.
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
                 val position = viewHolder.adapterPosition
-                reminders.removeAt(position)
-                reminderAdapter.notifyDataSetChanged()
+                val reminderToDelete = reminders[position]
+
+                CoroutineScope(Dispatchers.Main).launch {
+                    withContext(Dispatchers.IO) {
+                        reminderRepository.deleteReminder(reminderToDelete)
+                    }
+                    getRemindersFromDatabase()
+                }
+
             }
         }
         return ItemTouchHelper(callback)
